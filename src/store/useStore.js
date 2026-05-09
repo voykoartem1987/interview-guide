@@ -21,6 +21,7 @@ const useStore = create(
     (set, get) => ({
       candidates: [],
       interviews: [],
+      templates: [],
 
       addCandidate: (data) => {
         const c = { id: uid(), createdAt: new Date().toISOString(), status: 'pending', ...data }
@@ -104,6 +105,14 @@ const useStore = create(
 
       deleteInterview: (id) =>
         set(s => ({ interviews: s.interviews.filter(i => i.id !== id) })),
+
+      saveTemplate: (name, { sections, grade, count }) => {
+        const t = { id: uid(), name, sections, grade, count, createdAt: new Date().toISOString() }
+        set(s => ({ templates: [t, ...s.templates] }))
+      },
+
+      deleteTemplate: (id) =>
+        set(s => ({ templates: s.templates.filter(t => t.id !== id) })),
 
       getCandidate: (id) => get().candidates.find(c => c.id === id),
       getInterview: (id) => get().interviews.find(i => i.id === id),

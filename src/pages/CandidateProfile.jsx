@@ -23,12 +23,13 @@ function ScoreBar({ pct }) {
 export default function CandidateProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getCandidate, getCandidateInterviews, updateCandidate, deleteCandidate, startInterview } = useStore()
+  const { getCandidate, getCandidateInterviews, updateCandidate, deleteCandidate, startInterview, templates, saveTemplate, deleteTemplate } = useStore()
   const candidate = getCandidate(id)
   const interviewList = getCandidateInterviews(id)
   const [showSetup, setShowSetup] = useState(false)
   const [editStatus, setEditStatus] = useState(false)
   const [setup, setSetup] = useState({ sections: ['meta', 'google', 'analytics'], grade: candidate?.targetGrade || 'middle', count: 0 })
+  const [templateName, setTemplateName] = useState('')
 
   if (!candidate) return <div className="p-8 text-slate-400">Кандидат не найден. <Link to="/" className="underline">На главную</Link></div>
 
@@ -111,6 +112,21 @@ export default function CandidateProfile() {
         <div className="card p-5 mb-6 border-indigo-200 border-2">
           <h3 className="font-semibold mb-4">Настройка интервью</h3>
           <div className="space-y-4">
+            {templates.length > 0 && (
+              <div>
+                <label className="label">Шаблоны</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {templates.map(t => (
+                    <div key={t.id} className="flex items-center gap-1 bg-slate-100 hover:bg-indigo-50 rounded-lg pl-2.5 pr-1 py-1.5 transition-colors">
+                      <button type="button" onClick={() => setSetup({ sections: t.sections, grade: t.grade, count: t.count })}
+                        className="text-xs text-slate-700 hover:text-indigo-700 font-medium">{t.name}</button>
+                      <button type="button" onClick={() => deleteTemplate(t.id)}
+                        className="text-slate-400 hover:text-red-500 text-sm leading-none ml-1 px-0.5">×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className="label">Грейд</label>
               <div className="flex gap-2">
@@ -137,6 +153,20 @@ export default function CandidateProfile() {
             <div>
               <label className="label">Количество вопросов (0 = все)</label>
               <input type="number" min={0} className="input" value={setup.count} onChange={e => setSetup(s => ({ ...s, count: parseInt(e.target.value) || 0 }))} placeholder="0 — все вопросы" />
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="input flex-1 text-sm"
+                placeholder="Название шаблона..."
+                value={templateName}
+                onChange={e => setTemplateName(e.target.value)}
+              />
+              <button
+                type="button"
+                disabled={!templateName.trim()}
+                onClick={() => { saveTemplate(templateName.trim(), setup); setTemplateName('') }}
+                className="btn-ghost text-sm whitespace-nowrap disabled:opacity-40"
+              >Сохранить шаблон</button>
             </div>
             <div className="flex gap-2">
               <button className="btn-ghost flex-1" onClick={() => setShowSetup(false)}>Отмена</button>
