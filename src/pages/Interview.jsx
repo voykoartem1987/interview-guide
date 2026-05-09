@@ -12,7 +12,7 @@ const SCORE_BTNS = [
 export default function Interview() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getInterview, getCandidate, setAnswer, setNote, setGeneralNote, completeInterview } = useStore()
+  const { getInterview, getCandidate, setAnswer, setNote, setGeneralNote, completeInterview, toggleFlag } = useStore()
   const interview = getInterview(id)
   const [idx, setIdx] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
@@ -90,7 +90,8 @@ export default function Interview() {
                     <span className={`w-4 h-4 rounded-full text-center text-xs flex items-center justify-center flex-shrink-0 ${scored ? (a.score === 2 ? 'bg-green-500 text-white' : a.score === 1 ? 'bg-amber-400 text-white' : 'bg-red-400 text-white') : 'bg-slate-200'}`}>
                       {scored ? SCORE_META[a.score].short : i + 1}
                     </span>
-                    <span className="truncate">{q?.q?.slice(0, 40)}...</span>
+                    <span className="truncate flex-1">{q?.q?.slice(0, 40)}...</span>
+                    {a?.flagged && <span className="flex-shrink-0 text-red-400">🚩</span>}
                   </div>
                 </button>
               )
@@ -121,6 +122,15 @@ export default function Interview() {
                     <div className="text-xs mt-0.5">{btn.label}</div>
                   </button>
                 ))}
+              </div>
+
+              <div className="mb-4">
+                <button
+                  onClick={() => toggleFlag(id, curId)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${curAns?.flagged ? 'bg-red-500 border-red-500 text-white' : 'border-red-200 text-red-400 hover:bg-red-50'}`}
+                >
+                  🚩 {curAns?.flagged ? 'Флаг активен — нажми чтобы снять' : 'Отметить красным флагом'}
+                </button>
               </div>
 
               <div className="mb-4">

@@ -75,6 +75,24 @@ const useStore = create(
           interviews: s.interviews.map(i => i.id === interviewId ? { ...i, generalNote: note } : i),
         })),
 
+      toggleFlag: (interviewId, questionId) =>
+        set(s => ({
+          interviews: s.interviews.map(i =>
+            i.id === interviewId
+              ? {
+                  ...i,
+                  answers: {
+                    ...i.answers,
+                    [questionId]: {
+                      ...(i.answers[questionId] || { score: null, note: '' }),
+                      flagged: !(i.answers[questionId]?.flagged),
+                    },
+                  },
+                }
+              : i
+          ),
+        })),
+
       completeInterview: (interviewId, recommendation) =>
         set(s => ({
           interviews: s.interviews.map(i =>

@@ -67,9 +67,9 @@ export default function InterviewResult() {
     const weakThemes = Object.values(byTheme).filter(t => t.pct < 50).sort((a, b) => a.pct - b.pct)
     const strongThemes = Object.values(byTheme).filter(t => t.pct >= 75).sort((a, b) => b.pct - a.pct)
 
-    const flagged = answered
-      .filter(([, a]) => a.score === 0 && a.note)
-      .map(([qid, a]) => ({ ...questionMap[qid], note: a.note }))
+    const flagged = Object.entries(interview.answers)
+      .filter(([, a]) => a.flagged)
+      .map(([qid, a]) => ({ ...questionMap[qid], note: a.note, score: a.score }))
 
     return { questionMap, overall, bySection, byTheme, weakThemes, strongThemes, flagged, total }
   }, [interview])
@@ -156,13 +156,20 @@ export default function InterviewResult() {
 
       {data.flagged.length > 0 && (
         <div className="card p-5 mb-5 border-orange-100">
-          <h3 className="font-semibold mb-3 text-orange-700">Красные флаги с заметками</h3>
+          <h3 className="font-semibold mb-3 text-orange-700">Красные флаги</h3>
           <div className="space-y-3">
             {data.flagged.map((q, i) => (
               <div key={i} className="border-l-4 border-red-300 pl-3">
                 <p className="text-xs text-slate-500 mb-0.5">{q.themeTitle}</p>
-                <p className="text-sm font-medium text-slate-800">{q.q}</p>
-                <p className="text-xs text-red-600 mt-1 italic">Заметка: {q.note}</p>
+                <div className="flex items-start gap-2">
+                  {q.score !== null && q.score !== undefined && (
+                    <span className={`flex-shrink-0 w-5 h-5 rounded-full ${q.score === 2 ? 'bg-green-500' : q.score === 1 ? 'bg-amber-400' : 'bg-red-400'} text-white text-xs flex items-center justify-center font-bold mt-0.5`}>
+                      {SCORE_META[q.score].short}
+                    </span>
+                  )}
+                  <p className="text-sm font-medium text-slate-800">{q.q}</p>
+                </div>
+                {q.note && <p className="text-xs text-red-600 mt-1 italic">Заметка: {q.note}</p>}
               </div>
             ))}
           </div>
@@ -182,6 +189,7 @@ export default function InterviewResult() {
                 <span className={`flex-shrink-0 w-6 h-6 rounded-full ${a.score === 2 ? 'bg-green-500' : a.score === 1 ? 'bg-amber-400' : 'bg-red-400'} text-white text-xs flex items-center justify-center font-bold`}>{sm.short}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-700">{q.q}</p>
+                  {a.flagged && <span className="text-xs text-red-500">🚩</span>}
                   {a.note && <p className="text-xs text-slate-400 mt-0.5 italic">{a.note}</p>}
                 </div>
               </div>

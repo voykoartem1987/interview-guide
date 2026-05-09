@@ -28,6 +28,14 @@ export default function Dashboard() {
 
   const filtered = filter === 'all' ? candidates : candidates.filter(c => c.status === filter)
 
+  const completedInterviews = interviews.filter(i => i.completedAt)
+  const scores = completedInterviews.map(i => {
+    const vals = Object.values(i.answers).filter(a => a.score !== null)
+    return vals.length ? Math.round((vals.reduce((s, a) => s + a.score, 0) / (vals.length * 2)) * 100) : null
+  }).filter(s => s !== null)
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+  const hired = candidates.filter(c => c.status === 'passed').length
+
   const lastInterview = (candidateId) => {
     const ci = interviews.filter(i => i.candidateId === candidateId && i.completedAt).sort((a, b) => b.completedAt.localeCompare(a.completedAt))
     return ci[0] || null
@@ -44,6 +52,29 @@ export default function Dashboard() {
           + Добавить кандидата
         </button>
       </div>
+
+      {candidates.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="card p-4 text-center">
+            <div className="text-2xl font-bold text-slate-900">{candidates.length}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Кандидатов</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">{hired}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Принято</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className="text-2xl font-bold text-indigo-600">{completedInterviews.length}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Интервью</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className={`text-2xl font-bold ${avgScore !== null ? (avgScore >= 75 ? 'text-green-600' : avgScore >= 50 ? 'text-amber-600' : 'text-red-500') : 'text-slate-400'}`}>
+              {avgScore !== null ? `${avgScore}%` : '-'}
+            </div>
+            <div className="text-xs text-slate-500 mt-0.5">Средний скор</div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-6">
         {[['all', 'Все'], ...Object.entries(STATUS_META).map(([k, v]) => [k, v.label])].map(([k, l]) => (

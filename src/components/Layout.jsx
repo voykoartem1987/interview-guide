@@ -11,6 +11,7 @@ export default function Layout() {
           <Link to="/" className="flex items-center gap-2 font-bold text-lg tracking-tight">
             <span className="text-indigo-400">⬡</span> Interview Guide
           </Link>
+          <Link to="/knowledge" className="text-slate-400 hover:text-white text-sm transition-colors">База знаний</Link>
           <span className="text-slate-600 text-xs ml-auto">Таргетолог / Контекстолог</span>
         </header>
       )}
