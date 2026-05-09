@@ -23,7 +23,7 @@ function ScoreBar({ pct }) {
 export default function CandidateProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getCandidate, getCandidateInterviews, updateCandidate, deleteCandidate, startInterview, templates, saveTemplate, deleteTemplate } = useStore()
+  const { getCandidate, getCandidateInterviews, updateCandidate, deleteCandidate, startInterview, templates, saveTemplate, deleteTemplate, customQuestions } = useStore()
   const candidate = getCandidate(id)
   const interviewList = getCandidateInterviews(id)
   const [showSetup, setShowSetup] = useState(false)
@@ -47,6 +47,7 @@ export default function CandidateProfile() {
   const handleStart = () => {
     if (!setup.sections.length) return
     const allQs = setup.sections.flatMap(sec => {
+      if (sec === 'custom') return customQuestions.map(q => q.id)
       const level = QUESTIONS[sec]?.levels[setup.grade]
       if (!level) return []
       return level.themes.flatMap(t => t.questions.map(q => q.id))
@@ -148,6 +149,12 @@ export default function CandidateProfile() {
                     {sec.label}
                   </button>
                 ))}
+                {customQuestions.length > 0 && (
+                  <button type="button" onClick={() => toggleSection('custom')}
+                    className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-all ${setup.sections.includes('custom') ? 'bg-violet-600 border-violet-600 text-white' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    Мои вопросы
+                  </button>
+                )}
               </div>
             </div>
             <div>
@@ -203,7 +210,7 @@ export default function CandidateProfile() {
                   {score !== null && <span className={`text-2xl font-bold ${score >= 75 ? 'text-green-600' : score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{score}%</span>}
                   <Link to={interview.completedAt ? `/interview/${interview.id}/result` : `/interview/${interview.id}`}
                     className="btn-primary text-xs">
-                    {interview.completedAt ? 'Результат' : 'Продолжить'}
+                    {interview.completedAt ? 'Резумьтат' : 'Продолжить'}
                   </Link>
                 </div>
               </div>

@@ -22,6 +22,7 @@ const useStore = create(
       candidates: [],
       interviews: [],
       templates: [],
+      customQuestions: [],
 
       addCandidate: (data) => {
         const c = { id: uid(), createdAt: new Date().toISOString(), status: 'pending', ...data }
@@ -113,6 +114,17 @@ const useStore = create(
 
       deleteTemplate: (id) =>
         set(s => ({ templates: s.templates.filter(t => t.id !== id) })),
+
+      addCustomQuestion: ({ q, a, theme }) => {
+        const cq = { id: `cq_${uid()}`, q, a, theme: theme || '' }
+        set(s => ({ customQuestions: [...s.customQuestions, cq] }))
+      },
+
+      updateCustomQuestion: (id, data) =>
+        set(s => ({ customQuestions: s.customQuestions.map(q => q.id === id ? { ...q, ...data } : q) })),
+
+      deleteCustomQuestion: (id) =>
+        set(s => ({ customQuestions: s.customQuestions.filter(q => q.id !== id) })),
 
       getCandidate: (id) => get().candidates.find(c => c.id === id),
       getInterview: (id) => get().interviews.find(i => i.id === id),

@@ -12,7 +12,7 @@ const SCORE_BTNS = [
 export default function Interview() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getInterview, getCandidate, setAnswer, setNote, setGeneralNote, completeInterview, toggleFlag } = useStore()
+  const { getInterview, getCandidate, setAnswer, setNote, setGeneralNote, completeInterview, toggleFlag, customQuestions } = useStore()
   const interview = getInterview(id)
   const [idx, setIdx] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
@@ -23,12 +23,16 @@ export default function Interview() {
     if (!interview) return {}
     const map = {}
     interview.sections.forEach(sec => {
+      if (sec === 'custom') {
+        customQuestions.forEach(q => { map[q.id] = { ...q, themeTitle: q.theme || 'Мои вопросы', section: 'custom' } })
+        return
+      }
       const level = QUESTIONS[sec]?.levels[interview.grade]
       if (!level) return
       level.themes.forEach(t => t.questions.forEach(q => { map[q.id] = { ...q, themeTitle: t.title, section: sec } }))
     })
     return map
-  }, [interview])
+  }, [interview, customQuestions])
 
   if (!interview) return <div className="p-8 text-slate-400">Интервью не найдено</div>
   if (interview.completedAt) { navigate(`/interview/${id}/result`); return null }

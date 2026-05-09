@@ -6,6 +6,7 @@ import Interview from './pages/Interview'
 import InterviewResult from './pages/InterviewResult'
 import KnowledgeBase from './pages/KnowledgeBase'
 import Compare from './pages/Compare'
+import CustomQuestions from './pages/CustomQuestions'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="interview/:id/result" element={<InterviewResult />} />
         <Route path="knowledge" element={<KnowledgeBase />} />
         <Route path="compare" element={<Compare />} />
+        <Route path="custom-questions" element={<CustomQuestions />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

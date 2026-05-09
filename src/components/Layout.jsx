@@ -13,6 +13,7 @@ export default function Layout() {
           </Link>
           <Link to="/knowledge" className="text-slate-400 hover:text-white text-sm transition-colors">База знаний</Link>
           <Link to="/compare" className="text-slate-400 hover:text-white text-sm transition-colors">Сравнение</Link>
+          <Link to="/custom-questions" className="text-slate-400 hover:text-white text-sm transition-colors">Мои вопросы</Link>
           <span className="text-slate-600 text-xs ml-auto">Таргетолог / Контекстолог</span>
         </header>
       )}

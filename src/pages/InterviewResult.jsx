@@ -24,13 +24,19 @@ const REC_META = {
 export default function InterviewResult() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getInterview, getCandidate } = useStore()
+  const { getInterview, getCandidate, customQuestions } = useStore()
   const interview = getInterview(id)
 
   const data = useMemo(() => {
     if (!interview) return null
     const questionMap = {}
     interview.sections.forEach(sec => {
+      if (sec === 'custom') {
+        customQuestions.forEach(q => {
+          questionMap[q.id] = { ...q, themeTitle: q.theme || 'Мои вопросы', themeId: `cq_${q.id}`, section: 'custom' }
+        })
+        return
+      }
       const level = QUESTIONS[sec]?.levels[interview.grade]
       if (!level) return
       level.themes.forEach(t => t.questions.forEach(q => {
@@ -44,6 +50,14 @@ export default function InterviewResult() {
 
     const bySection = {}
     interview.sections.forEach(sec => {
+      if (sec === 'custom') {
+        const ids = new Set(customQuestions.map(q => q.id))
+        const vals = answered.filter(([qid]) => ids.has(qid))
+        if (!vals.length) return
+        const pct = Math.round((vals.reduce((s, [, a]) => s + a.score, 0) / (vals.length * 2)) * 100)
+        bySection['custom'] = { pct, count: vals.length }
+        return
+      }
       const level = QUESTIONS[sec]?.levels[interview.grade]
       if (!level) return
       const ids = new Set(level.themes.flatMap(t => t.questions.map(q => q.id)))
@@ -72,11 +86,69 @@ export default function InterviewResult() {
       .map(([qid, a]) => ({ ...questionMap[qid], note: a.note, score: a.score }))
 
     return { questionMap, overall, bySection, byTheme, weakThemes, strongThemes, flagged, total }
-  }, [interview])
+  }, [interview, customQuestions])
 
   if (!interview || !data) return <div className="p-8 text-slate-400">Не найдено. <Link to="/" className="underline">На главную</Link></div>
   const candidate = getCandidate(interview.candidateId)
   const rec = interview.recommendation ? REC_META[interview.recommendation] : null
+
+  const handleExport = () => {
+    const dateStr = new Date(interview.completedAt).toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
+    const scoreColor = data.overall >= 75 ? '#16a34a' : data.overall >= 50 ? '#d97706' : '#dc2626'
+
+    const sectionRows = interview.sections.map(sec => {
+      const s = data.bySection[sec]
+      if (!s) return ''
+      const label = sec === 'custom' ? 'Мои вопросы' : (QUESTIONS[sec]?.label || sec)
+      const c = s.pct >= 75 ? '#22c55e' : s.pct >= 50 ? '#f59e0b' : '#ef4444'
+      return `<tr><td style="padding:5px 8px">${label}</td><td style="padding:5px 8px;color:#94a3b8;font-size:12px">${s.count} вопр.</td><td style="padding:5px 8px;width:200px"><div style="background:#f1f5f9;border-radius:9999px;height:8px"><div style="background:${c};height:8px;border-radius:9999px;width:${s.pct}%"></div></div></td><td style="padding:5px 8px;color:${c};font-weight:bold;text-align:right">${s.pct}%</td></tr>`
+    }).join('')
+
+    const answersHtml = interview.questionIds.map(qid => {
+      const q = data.questionMap[qid]
+      const a = interview.answers[qid]
+      if (!q || !a || a.score === null) return ''
+      const sm = SCORE_META[a.score]
+      const bg = a.score === 2 ? '#22c55e' : a.score === 1 ? '#f59e0b' : '#ef4444'
+      return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc">
+        <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:${bg};color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:bold">${sm.short}</span>
+        <div><div style="font-size:13px;color:#334155">${q.q}</div>${a.note ? `<div style="font-size:11px;color:#94a3b8;font-style:italic">${a.note}</div>` : ''}</div>
+      </div>`
+    }).join('')
+
+    const flaggedHtml = data.flagged.map(q => `<div style="border-left:4px solid #fca5a5;padding:6px 12px;margin-bottom:8px">
+      <div style="font-size:11px;color:#94a3b8">${q.themeTitle || ''}</div>
+      <div style="font-size:13px;font-weight:500">${q.q || ''}</div>
+      ${q.note ? `<div style="font-size:12px;color:#dc2626;font-style:italic">Заметка: ${q.note}</div>` : ''}
+    </div>`).join('')
+
+    const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчёт: ${candidate?.name}</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:800px;margin:0 auto;padding:32px 24px;color:#1e293b}h2{font-size:15px;margin:24px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}table{width:100%;border-collapse:collapse}@media print{body{padding:0}}</style>
+</head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+  <div>
+    <div style="font-size:22px;font-weight:800;margin-bottom:4px">${candidate?.name}</div>
+    <div style="color:#64748b;font-size:13px">${candidate?.position} · ${LEVEL_LABELS[interview.grade]} · ${dateStr}</div>
+    ${rec ? `<div style="margin-top:10px;padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;font-weight:600;font-size:13px;display:inline-block">${rec.icon} ${rec.label}</div>` : ''}
+    ${interview.generalNote ? `<div style="margin-top:10px;font-size:13px;color:#475569;font-style:italic">"${interview.generalNote}"</div>` : ''}
+  </div>
+  <div style="text-align:right"><div style="font-size:42px;font-weight:800;color:${scoreColor}">${data.overall}%</div><div style="font-size:11px;color:#94a3b8">${data.total} вопросов</div></div>
+</div>
+<h2>Результаты по разделам</h2><table>${sectionRows}</table>
+${data.weakThemes.length ? `<h2 style="color:#b91c1c">Слабые места</h2>${data.weakThemes.map(t => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${t.title}</span><span style="color:#ef4444;font-weight:bold">${t.pct}%</span></div>`).join('')}` : ''}
+${data.strongThemes.length ? `<h2 style="color:#15803d">Сильные стороны</h2>${data.strongThemes.map(t => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${t.title}</span><span style="color:#22c55e;font-weight:bold">${t.pct}%</span></div>`).join('')}` : ''}
+${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2>${flaggedHtml}` : ''}
+<h2>Все ответы</h2>${answersHtml}
+</body></html>`
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `interview-${(candidate?.name || 'report').replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -116,7 +188,7 @@ export default function InterviewResult() {
             return (
               <div key={sec}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium">{QUESTIONS[sec]?.label}</span>
+                  <span className="text-sm font-medium">{sec === 'custom' ? 'Мои вопросы' : QUESTIONS[sec]?.label}</span>
                   <span className="text-xs text-slate-400">{s.count} вопросов</span>
                 </div>
                 <ScoreBar pct={s.pct} />
@@ -156,7 +228,7 @@ export default function InterviewResult() {
 
       {data.flagged.length > 0 && (
         <div className="card p-5 mb-5 border-orange-100">
-          <h3 className="font-semibold mb-3 text-orange-700">Красные флаги</h3>
+          <h3 className="font-semibold mb-3 text-orange-700">Красные флаги с заметками</h3>
           <div className="space-y-3">
             {data.flagged.map((q, i) => (
               <div key={i} className="border-l-4 border-red-300 pl-3">
@@ -189,7 +261,6 @@ export default function InterviewResult() {
                 <span className={`flex-shrink-0 w-6 h-6 rounded-full ${a.score === 2 ? 'bg-green-500' : a.score === 1 ? 'bg-amber-400' : 'bg-red-400'} text-white text-xs flex items-center justify-center font-bold`}>{sm.short}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-700">{q.q}</p>
-                  {a.flagged && <span className="text-xs text-red-500">🚩</span>}
                   {a.note && <p className="text-xs text-slate-400 mt-0.5 italic">{a.note}</p>}
                 </div>
               </div>
@@ -200,6 +271,7 @@ export default function InterviewResult() {
 
       <div className="flex gap-3 no-print">
         <Link to={`/candidates/${interview.candidateId}`} className="btn-ghost flex-1 text-center">← К кандидату</Link>
+        <button className="btn-ghost flex-1" onClick={handleExport}>⬇ Скачать отчёт</button>
       </div>
     </div>
   )
