@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { LEVEL_LABELS } from '../data/questions'
 
+const ACCEPT = '.pdf,.docx,.txt'
+
 function extractName(lines) {
   for (const line of lines.slice(0, 12)) {
     const clean = line.trim()
@@ -15,12 +17,50 @@ function extractName(lines) {
   return ''
 }
 
+async function parseResume(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+
+  if (ext === 'txt') {
+    return file.text()
+  }
+
+  if (ext === 'docx') {
+    const mammoth = await import('mammoth')
+    const ab = await file.arrayBuffer()
+    const result = await mammoth.extractRawText({ arrayBuffer: ab })
+    return result.value
+  }
+
+  if (ext === 'pdf') {
+    const pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+    const ab = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise
+    const page = await pdf.getPage(1)
+    const content = await page.getTextContent()
+    const byY = {}
+    for (const item of content.items) {
+      if (!item.str?.trim()) continue
+      const y = Math.round(item.transform[5])
+      byY[y] = (byY[y] || '') + item.str + ' '
+    }
+    return Object.entries(byY)
+      .sort(([a], [b]) => Number(b) - Number(a))
+      .map(([, v]) => v.trim())
+      .join('\n')
+  }
+
+  return ''
+}
+
 export default function NewCandidateModal({ onClose }) {
   const addCandidate = useStore(s => s.addCandidate)
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', position: 'Таргетолог / Контекстолог', targetGrade: 'middle', notes: '' })
   const [parsing, setParsing] = useState(false)
   const [autoFilled, setAutoFilled] = useState(false)
+  const [parseError, setParseError] = useState(false)
   const fileRef = useRef()
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -29,24 +69,10 @@ export default function NewCandidateModal({ onClose }) {
     const file = e.target.files[0]
     if (!file) return
     setParsing(true)
+    setParseError(false)
     try {
-      const pdfjsLib = await import('pdfjs-dist')
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-      const ab = await file.arrayBuffer()
-      const pdf = await pdfjsLib.getDocument({ data: ab }).promise
-      const page = await pdf.getPage(1)
-      const content = await page.getTextContent()
-      const byY = {}
-      for (const item of content.items) {
-        if (!item.str?.trim()) continue
-        const y = Math.round(item.transform[5])
-        byY[y] = (byY[y] || '') + item.str + ' '
-      }
-      const lines = Object.entries(byY)
-        .sort(([a], [b]) => Number(b) - Number(a))
-        .map(([, v]) => v.trim())
-        .filter(Boolean)
+      const text = await parseResume(file)
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
       const name = extractName(lines)
       if (name) {
         set('name', name)
@@ -54,7 +80,8 @@ export default function NewCandidateModal({ onClose }) {
       }
       if (!form.notes) set('notes', `Резюме: ${file.name}`)
     } catch (err) {
-      console.error('PDF parse error:', err)
+      console.error('Resume parse error:', err)
+      setParseError(true)
     }
     setParsing(false)
     if (fileRef.current) fileRef.current.value = ''
@@ -76,17 +103,25 @@ export default function NewCandidateModal({ onClose }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
-        <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} />
+        <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFile} />
         <button
           type="button"
           disabled={parsing}
           onClick={() => fileRef.current?.click()}
-          className="w-full mb-5 py-3 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+          className="w-full mb-5 py-3 border-2 border-dashed border-slate-200 rounded-xl text-sm hover:border-indigo-300 transition-colors flex flex-col items-center justify-center gap-1 disabled:opacity-60"
         >
-          {parsing
-            ? <><span className="inline-block animate-spin">↻</span> Читаю резюме...</>
-            : <>📄 Загрузить PDF резюме — имя определится автоматически</>
-          }
+          {parsing ? (
+            <span className="text-indigo-500 flex items-center gap-2">
+              <span className="inline-block animate-spin">↻</span> Читаю резюме...
+            </span>
+          ) : parseError ? (
+            <span className="text-red-500">Не удалось прочитать файл — попробуй другой формат</span>
+          ) : (
+            <>
+              <span className="text-slate-500 font-medium">📄 Загрузить резюме</span>
+              <span className="text-slate-400 text-xs">PDF, DOCX, TXT — имя определится автоматически</span>
+            </>
+          )}
         </button>
 
         <form onSubmit={submit} className="space-y-4">
