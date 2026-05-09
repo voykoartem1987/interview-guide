@@ -1,14 +1,64 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { LEVEL_LABELS } from '../data/questions'
+
+function extractName(lines) {
+  for (const line of lines.slice(0, 12)) {
+    const clean = line.trim()
+    if (!clean) continue
+    const words = clean.split(/\s+/)
+    if (words.length < 2 || words.length > 4) continue
+    const namePattern = /^[А-ЯЁІЇЄA-Z][а-яёіїєa-zA-ZА-ЯЁІЇЄЬъ''-]{1,}$/
+    if (words.every(w => namePattern.test(w))) return clean
+  }
+  return ''
+}
 
 export default function NewCandidateModal({ onClose }) {
   const addCandidate = useStore(s => s.addCandidate)
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', position: 'Таргетолог / Контекстолог', targetGrade: 'middle', notes: '' })
+  const [parsing, setParsing] = useState(false)
+  const [autoFilled, setAutoFilled] = useState(false)
+  const fileRef = useRef()
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setParsing(true)
+    try {
+      const pdfjsLib = await import('pdfjs-dist')
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+      const ab = await file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise
+      const page = await pdf.getPage(1)
+      const content = await page.getTextContent()
+      const byY = {}
+      for (const item of content.items) {
+        if (!item.str?.trim()) continue
+        const y = Math.round(item.transform[5])
+        byY[y] = (byY[y] || '') + item.str + ' '
+      }
+      const lines = Object.entries(byY)
+        .sort(([a], [b]) => Number(b) - Number(a))
+        .map(([, v]) => v.trim())
+        .filter(Boolean)
+      const name = extractName(lines)
+      if (name) {
+        set('name', name)
+        setAutoFilled(true)
+      }
+      if (!form.notes) set('notes', `Резюме: ${file.name}`)
+    } catch (err) {
+      console.error('PDF parse error:', err)
+    }
+    setParsing(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   const submit = (e) => {
     e.preventDefault()
@@ -25,10 +75,33 @@ export default function NewCandidateModal({ onClose }) {
           <h2 className="text-lg font-bold">Новый кандидат</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
+
+        <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} />
+        <button
+          type="button"
+          disabled={parsing}
+          onClick={() => fileRef.current?.click()}
+          className="w-full mb-5 py-3 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {parsing
+            ? <><span className="inline-block animate-spin">↻</span> Читаю резюме...</>
+            : <>📄 Загрузить PDF резюме — имя определится автоматически</>
+          }
+        </button>
+
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="label">Имя</label>
-            <input className="input" placeholder="Иван Петренко" value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label mb-0">Имя</label>
+              {autoFilled && <span className="text-xs text-green-600 font-medium">✓ из резюме</span>}
+            </div>
+            <input
+              className="input"
+              placeholder="Иван Петренко"
+              value={form.name}
+              onChange={e => { set('name', e.target.value); setAutoFilled(false) }}
+              autoFocus
+            />
           </div>
           <div>
             <label className="label">Должность</label>
