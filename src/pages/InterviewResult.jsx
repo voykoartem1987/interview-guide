@@ -1,9 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import useStore, { SCORE_META } from '../store/useStore'
 import { QUESTIONS, LEVEL_LABELS } from '../data/questions'
 
 const CF_WORKER = 'https://delicate-firefly-bb32.voykoartem1987.workers.dev'
+
+async function parseTranscription(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  if (ext === 'txt') return file.text()
+  if (ext === 'docx') {
+    const mammoth = await import('mammoth')
+    const ab = await file.arrayBuffer()
+    const result = await mammoth.extractRawText({ arrayBuffer: ab })
+    return result.value
+  }
+  return ''
+}
 
 function ScoreBar({ pct, color }) {
   const bg = pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
@@ -33,6 +45,25 @@ export default function InterviewResult() {
   const [verdictError, setVerdictError] = useState('')
   const [showKeyInput, setShowKeyInput] = useState(false)
   const [keyInput, setKeyInput] = useState('')
+  const [transcriptionText, setTranscriptionText] = useState('')
+  const [transcriptionName, setTranscriptionName] = useState('')
+  const [transcriptionParsing, setTranscriptionParsing] = useState(false)
+  const transcriptionRef = useRef()
+
+  const handleTranscriptionFile = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setTranscriptionParsing(true)
+    try {
+      const text = await parseTranscription(file)
+      setTranscriptionText(text)
+      setTranscriptionName(file.name)
+    } catch (err) {
+      console.error('Transcription parse error:', err)
+    }
+    setTranscriptionParsing(false)
+    if (transcriptionRef.current) transcriptionRef.current.value = ''
+  }
 
   const data = useMemo(() => {
     if (!interview) return null
@@ -116,7 +147,9 @@ export default function InterviewResult() {
       .filter(Boolean)
       .join('\n\n')
 
-    const prompt = `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОтветы:\n${qaPairs}\n\nДай структурированный анализ на русском языке:\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)\n\nОпирайся только на реальные оценки и заметки.`
+    const prompt = transcriptionText
+      ? `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОЦЕНКИ ИНТЕРВЬЮЕРА:\n${qaPairs}\n\nТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:\n${transcriptionText.slice(0, 8000)}\n\nДай структурированный анализ на русском языке, опираясь на ОБА источника (оценки и транскрипцию):\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
+      : `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОтветы:\n${qaPairs}\n\nДай структурированный анализ на русском языке:\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)\n\nОпирайся только на реальные оценки и заметки.`
 
     try {
       const res = await fetch(CF_WORKER, {
@@ -327,6 +360,29 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
         <div className="flex items-center gap-2 mb-3">
           <span className="font-semibold text-slate-800">✨ Анализ от Claude AI</span>
           <span className="text-xs text-slate-400">- персональный вердикт по ответам</span>
+        </div>
+
+        <input ref={transcriptionRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleTranscriptionFile} />
+        <div className="mb-3">
+          {transcriptionText ? (
+            <div className="flex items-center gap-2 p-2 bg-violet-50 rounded-lg border border-violet-100">
+              <span className="text-xs text-violet-700 flex-1 truncate">📄 {transcriptionName}</span>
+              <button
+                type="button"
+                onClick={() => { setTranscriptionText(''); setTranscriptionName('') }}
+                className="text-slate-400 hover:text-red-500 text-sm leading-none"
+              >×</button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={transcriptionParsing}
+              onClick={() => transcriptionRef.current?.click()}
+              className="w-full py-2 border border-dashed border-violet-200 rounded-lg text-xs text-violet-500 hover:border-violet-400 hover:bg-violet-50 transition-colors disabled:opacity-60"
+            >
+              {transcriptionParsing ? '↻ Читаю файл...' : '+ Загрузить транскрипцию (TXT, DOCX) — необязательно'}
+            </button>
+          )}
         </div>
 
         {showKeyInput ? (
