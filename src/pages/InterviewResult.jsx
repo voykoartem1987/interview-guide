@@ -38,7 +38,7 @@ const REC_META = {
 export default function InterviewResult() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getInterview, getCandidate, customQuestions, reopenInterview } = useStore()
+  const { getInterview, getCandidate, customQuestions, reopenInterview, setAnswer } = useStore()
   const interview = getInterview(id)
   const [verdictStatus, setVerdictStatus] = useState(null)
   const [verdictText, setVerdictText] = useState('')
@@ -55,6 +55,7 @@ export default function InterviewResult() {
   const initialPromptRef = useRef('')
   const [verdictEditing, setVerdictEditing] = useState(false)
   const [verdictDraft, setVerdictDraft] = useState('')
+  const [autoScoredCount, setAutoScoredCount] = useState(0)
 
   const handleTranscriptionFile = async (e) => {
     const file = e.target.files[0]
@@ -137,21 +138,36 @@ export default function InterviewResult() {
   const candidate = getCandidate(interview.candidateId)
   const rec = interview.recommendation ? REC_META[interview.recommendation] : null
 
-  const buildInitialPrompt = () =>
-    `Ты анализируешь транскрипцию собеседования на позицию таргетолог/контекстолог.
+  const buildInitialPrompt = () => {
+    const questionsList = interview.questionIds
+      .map(qid => { const q = data.questionMap[qid]; return q ? `${qid}: ${q.q}` : null })
+      .filter(Boolean)
+      .join('\n')
+
+    return `Ты анализируешь транскрипцию собеседования на позицию таргетолог/контекстолог.
 
 Кандидат: ${candidate?.name}
 Грейд: ${LEVEL_LABELS[interview.grade]}
 
 ТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:
-${transcriptionText.slice(0, 12000)}
+${transcriptionText.slice(0, 9000)}
+
+ВОПРОСЫ ИНТЕРВЬЮ:
+${questionsList}
 
 Дай структурированный анализ на русском языке, опираясь только на транскрипцию:
 1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта с примерами из текста)
 2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта с примерами из текста)
-3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
+3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)
 
-  const callClaude = async (messages, key) => {
+Затем выставь оценку каждому вопросу на основе транскрипции.
+Оценки: 2 = ответил хорошо, 1 = частично, 0 = не знает/не ответил, null = не обсуждалось.
+
+===ОЦЕНКИ===
+{"question_id": score_or_null}`
+  }
+
+  const callClaude = async (messages, key, maxTokens = 1000) => {
     const res = await fetch(CF_WORKER, {
       method: 'POST',
       headers: {
@@ -160,7 +176,7 @@ ${transcriptionText.slice(0, 12000)}
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, messages }),
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -176,11 +192,32 @@ ${transcriptionText.slice(0, 12000)}
     setVerdictStatus('loading')
     setVerdictError('')
     setChatMessages([])
+    setAutoScoredCount(0)
     const prompt = buildInitialPrompt()
     initialPromptRef.current = prompt
     try {
-      const text = await callClaude([{ role: 'user', content: prompt }], key)
-      setVerdictText(text)
+      const raw = await callClaude([{ role: 'user', content: prompt }], key, 2000)
+
+      let analysisText = raw
+      let scoredCount = 0
+      const scoresMatch = raw.match(/===ОЦЕНКИ===\s*\n(\{[\s\S]*?\})/)
+      if (scoresMatch) {
+        try {
+          const scores = JSON.parse(scoresMatch[1])
+          Object.entries(scores).forEach(([qid, score]) => {
+            if (score === null || score === undefined) return
+            const s = Number(score)
+            if (!isNaN(s) && s >= 0 && s <= 2 && interview.questionIds.includes(qid)) {
+              setAnswer(id, qid, Math.round(s), interview.answers[qid]?.note || '')
+              scoredCount++
+            }
+          })
+          setAutoScoredCount(scoredCount)
+          analysisText = raw.replace(/\n*===ОЦЕНКИ===[\s\S]*$/, '').trim()
+        } catch (_) {}
+      }
+
+      setVerdictText(analysisText)
       setVerdictStatus('done')
     } catch (err) {
       setVerdictError(err.message)
@@ -400,8 +437,13 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
       </div>
 
       <div className="card p-5 mb-5 border-violet-100 no-print">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="font-semibold text-slate-800">✨ Анализ от Claude AI</span>
+          {autoScoredCount > 0 && (
+            <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+              {autoScoredCount} оценок проставлено автоматически
+            </span>
+          )}
         </div>
 
         <input ref={transcriptionRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleTranscriptionFile} />
