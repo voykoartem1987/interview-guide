@@ -200,10 +200,34 @@ ${questionsList}
 
       let analysisText = raw
       let scoredCount = 0
-      const scoresMatch = raw.match(/===ОЦЕНКИ===\s*\n(\{[\s\S]*?\})/)
-      if (scoresMatch) {
+      let scoresJson = null
+      let cutIndex = -1
+
+      // Format 1: ===ОЦЕНКИ===
+      const m1 = raw.match(/===ОЦЕНКИ===\s*\n(\{[\s\S]*?\})/)
+      if (m1) {
+        scoresJson = m1[1]
+        cutIndex = raw.indexOf('===ОЦЕНКИ===')
+        while (cutIndex > 0 && raw[cutIndex - 1] === '\n') cutIndex--
+      }
+
+      // Format 2: ```json code block (last occurrence)
+      if (!scoresJson) {
+        const re = /```(?:json)?\s*\n(\{[\s\S]*?\})\s*\n?```/g
+        let lastM = null, m
+        while ((m = re.exec(raw)) !== null) lastM = m
+        if (lastM) {
+          scoresJson = lastM[1]
+          const before = raw.slice(0, lastM.index)
+          const hi = before.search(/\n#{1,3} [^\n]+\n*$/)
+          cutIndex = hi >= 0 ? hi : lastM.index
+          while (cutIndex > 0 && raw[cutIndex - 1] === '\n') cutIndex--
+        }
+      }
+
+      if (scoresJson) {
         try {
-          const scores = JSON.parse(scoresMatch[1])
+          const scores = JSON.parse(scoresJson)
           Object.entries(scores).forEach(([qid, score]) => {
             if (score === null || score === undefined) return
             const s = Number(score)
@@ -213,7 +237,7 @@ ${questionsList}
             }
           })
           setAutoScoredCount(scoredCount)
-          analysisText = raw.replace(/\n*===ОЦЕНКИ===[\s\S]*$/, '').trim()
+          if (cutIndex >= 0) analysisText = raw.slice(0, cutIndex).trim()
         } catch (_) {}
       }
 
