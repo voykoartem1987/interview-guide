@@ -48,7 +48,11 @@ export default function InterviewResult() {
   const [transcriptionText, setTranscriptionText] = useState('')
   const [transcriptionName, setTranscriptionName] = useState('')
   const [transcriptionParsing, setTranscriptionParsing] = useState(false)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
   const transcriptionRef = useRef()
+  const initialPromptRef = useRef('')
 
   const handleTranscriptionFile = async (e) => {
     const file = e.target.files[0]
@@ -131,82 +135,78 @@ export default function InterviewResult() {
   const candidate = getCandidate(interview.candidateId)
   const rec = interview.recommendation ? REC_META[interview.recommendation] : null
 
+  const buildInitialPrompt = () =>
+    `Ты анализируешь транскрипцию собеседования на позицию таргетолог/контекстолог.
+
+Кандидат: ${candidate?.name}
+Грейд: ${LEVEL_LABELS[interview.grade]}
+
+ТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:
+${transcriptionText.slice(0, 12000)}
+
+Дай структурированный анализ на русском языке, опираясь только на транскрипцию:
+1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта с примерами из текста)
+2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта с примерами из текста)
+3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
+
+  const callClaude = async (messages, key) => {
+    const res = await fetch(CF_WORKER, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, messages }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error?.message || `HTTP ${res.status}`)
+    }
+    const result = await res.json()
+    return result.content?.[0]?.text || ''
+  }
+
   const handleGetVerdict = async () => {
     const key = localStorage.getItem('anthropic_api_key')
     if (!key) { setShowKeyInput(true); return }
     setVerdictStatus('loading')
     setVerdictError('')
-
-    const qaPairs = interview.questionIds
-      .map(qid => {
-        const q = data.questionMap[qid]
-        const ans = interview.answers[qid]
-        if (!q || !ans || ans.score === null) return null
-        const scoreLabel = ans.score === 2 ? 'Знает отлично' : ans.score === 1 ? 'Знает частично' : 'Не знает'
-        return `Тема: ${q.themeTitle}\nВопрос: ${q.q}\nОценка: ${scoreLabel}${ans.note ? `\nЗаметка: ${ans.note}` : ''}${ans.flagged ? '\n[КРАСНЫЙ ФЛАГ]' : ''}`
-      })
-      .filter(Boolean)
-      .join('\n\n')
-
-    const prompt = transcriptionText
-      ? `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.
-
-Кандидат: ${candidate?.name}
-Грейд: ${LEVEL_LABELS[interview.grade]}
-Общий результат: ${data.overall}%
-
-ОЦЕНКИ ИНТЕРВЬЮЕРА:
-${qaPairs}
-
-ТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:
-${transcriptionText.slice(0, 8000)}
-
-Дай структурированный анализ на русском языке, опираясь на ОБА источника (оценки и транскрипцию):
-1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)
-2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)
-3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
-      : `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.
-
-Кандидат: ${candidate?.name}
-Грейд: ${LEVEL_LABELS[interview.grade]}
-Общий результат: ${data.overall}%
-
-Ответы:
-${qaPairs}
-
-Дай структурированный анализ на русском языке:
-1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)
-2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)
-3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)
-
-Опирайся только на реальные оценки и заметки.`
-
+    setChatMessages([])
+    const prompt = buildInitialPrompt()
+    initialPromptRef.current = prompt
     try {
-      const res = await fetch(CF_WORKER, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error?.message || `HTTP ${res.status}`)
-      }
-      const result = await res.json()
-      setVerdictText(result.content?.[0]?.text || '')
+      const text = await callClaude([{ role: 'user', content: prompt }], key)
+      setVerdictText(text)
       setVerdictStatus('done')
     } catch (err) {
       setVerdictError(err.message)
       setVerdictStatus('error')
     }
+  }
+
+  const handleSendChat = async () => {
+    const msg = chatInput.trim()
+    if (!msg || chatLoading) return
+    const key = localStorage.getItem('anthropic_api_key')
+    if (!key) { setShowKeyInput(true); return }
+    const newMessages = [...chatMessages, { role: 'user', content: msg }]
+    setChatMessages(newMessages)
+    setChatInput('')
+    setChatLoading(true)
+    try {
+      const history = [
+        { role: 'user', content: initialPromptRef.current },
+        { role: 'assistant', content: verdictText },
+        ...newMessages,
+      ]
+      const reply = await callClaude(history, key)
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }])
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `Ошибка: ${err.message}` }])
+    }
+    setChatLoading(false)
   }
 
   const handleExport = () => {
@@ -395,20 +395,19 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
       </div>
 
       <div className="card p-5 mb-5 border-violet-100 no-print">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-4">
           <span className="font-semibold text-slate-800">✨ Анализ от Claude AI</span>
-          <span className="text-xs text-slate-400">- персональный вердикт по ответам</span>
         </div>
 
         <input ref={transcriptionRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleTranscriptionFile} />
-        <div className="mb-3">
+        <div className="mb-4">
           {transcriptionText ? (
-            <div className="flex items-center gap-2 p-2 bg-violet-50 rounded-lg border border-violet-100">
+            <div className="flex items-center gap-2 p-2.5 bg-violet-50 rounded-lg border border-violet-100">
               <span className="text-xs text-violet-700 flex-1 truncate">📄 {transcriptionName}</span>
               <button
                 type="button"
-                onClick={() => { setTranscriptionText(''); setTranscriptionName('') }}
-                className="text-slate-400 hover:text-red-500 text-sm leading-none"
+                onClick={() => { setTranscriptionText(''); setTranscriptionName(''); setVerdictStatus(null); setVerdictText(''); setChatMessages([]) }}
+                className="text-slate-400 hover:text-red-500 text-sm leading-none flex-shrink-0"
               >×</button>
             </div>
           ) : (
@@ -416,14 +415,16 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
               type="button"
               disabled={transcriptionParsing}
               onClick={() => transcriptionRef.current?.click()}
-              className="w-full py-2 border border-dashed border-violet-200 rounded-lg text-xs text-violet-500 hover:border-violet-400 hover:bg-violet-50 transition-colors disabled:opacity-60"
+              className="w-full py-3 border-2 border-dashed border-violet-200 rounded-lg text-sm text-violet-500 hover:border-violet-400 hover:bg-violet-50 transition-colors disabled:opacity-60"
             >
-              {transcriptionParsing ? '↻ Читаю файл...' : '+ Загрузить транскрипцию (TXT, DOCX) — необязательно'}
+              {transcriptionParsing ? '↻ Читаю файл...' : '📄 Загрузить транскрипцию (.txt, .docx)'}
             </button>
           )}
         </div>
 
-        {showKeyInput ? (
+        {!transcriptionText ? (
+          <p className="text-xs text-slate-400 text-center py-1">Загрузите транскрипцию — Claude проанализирует её и ответит на вопросы</p>
+        ) : showKeyInput ? (
           <div className="space-y-2">
             <input
               className="input text-sm"
@@ -458,12 +459,7 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
           </div>
         ) : verdictStatus === 'loading' ? (
           <div className="flex items-center gap-2 text-violet-700 text-sm">
-            <span className="inline-block animate-spin">↻</span> Анализирую ответы кандидата...
-          </div>
-        ) : verdictStatus === 'done' ? (
-          <div className="space-y-3">
-            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{verdictText}</div>
-            <button onClick={handleGetVerdict} className="text-xs text-slate-400 hover:text-slate-600 underline">Обновить анализ</button>
+            <span className="inline-block animate-spin">↻</span> Анализирую транскрипцию...
           </div>
         ) : verdictStatus === 'error' ? (
           <div className="space-y-2">
@@ -473,9 +469,52 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
               <button onClick={() => setShowKeyInput(true)} className="text-xs text-slate-400 hover:text-slate-600 underline self-center">сменить ключ</button>
             </div>
           </div>
+        ) : verdictStatus === 'done' ? (
+          <div>
+            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 pb-4 border-b border-slate-100">{verdictText}</div>
+
+            {chatMessages.length > 0 && (
+              <div className="space-y-3 mb-4">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'user' ? (
+                      <span className="inline-block bg-indigo-100 text-indigo-900 text-sm px-3 py-2 rounded-2xl rounded-tr-sm max-w-xs">{msg.content}</span>
+                    ) : (
+                      <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed max-w-prose">{msg.content}</div>
+                    )}
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex items-center gap-2 text-violet-600 text-sm">
+                    <span className="inline-block animate-spin">↻</span> Отвечаю...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!chatLoading && (
+              <div className="flex gap-2 items-end">
+                <textarea
+                  className="input resize-none text-sm flex-1"
+                  rows={2}
+                  placeholder="Не согласен с чем-то? Задай уточняющий вопрос..."
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && chatInput.trim()) { e.preventDefault(); handleSendChat() } }}
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim()}
+                  className="btn-primary text-sm px-4 py-2 self-end disabled:opacity-40"
+                >→</button>
+              </div>
+            )}
+
+            <button onClick={handleGetVerdict} className="mt-3 text-xs text-slate-400 hover:text-slate-600 underline">Перезапустить анализ</button>
+          </div>
         ) : (
-          <button onClick={handleGetVerdict} className="btn-primary text-sm">
-            Получить анализ от Claude
+          <button onClick={handleGetVerdict} className="btn-primary text-sm w-full">
+            Проанализировать транскрипцию
           </button>
         )}
       </div>
