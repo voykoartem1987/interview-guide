@@ -4,9 +4,9 @@ import useStore, { SCORE_META } from '../store/useStore'
 import { QUESTIONS, LEVEL_LABELS } from '../data/questions'
 
 const SCORE_BTNS = [
-  { score: 2, label: 'Знает отлично', icon: '✓', cls: 'border-green-300 hover:bg-green-50', activeCls: 'bg-green-500 border-green-500 text-white' },
-  { score: 1, label: 'Частично',      icon: '~', cls: 'border-amber-300 hover:bg-amber-50', activeCls: 'bg-amber-400 border-amber-400 text-white' },
-  { score: 0, label: 'Не знает',      icon: '✕', cls: 'border-red-300 hover:bg-red-50',    activeCls: 'bg-red-400 border-red-400 text-white' },
+  { score: 2, label: 'Понял', icon: '✓', cls: 'border-green-300 hover:bg-green-50', activeCls: 'bg-green-500 border-green-500 text-white' },
+  { score: 1, label: 'Частично', icon: '~', cls: 'border-amber-300 hover:bg-amber-50', activeCls: 'bg-amber-400 border-amber-400 text-white' },
+  { score: 0, label: 'Не понял', icon: '✕', cls: 'border-red-300 hover:bg-red-50', activeCls: 'bg-red-400 border-red-400 text-white' },
 ]
 
 export default function Interview() {
@@ -24,7 +24,7 @@ export default function Interview() {
     const map = {}
     interview.sections.forEach(sec => {
       if (sec === 'custom') {
-        customQuestions.forEach(q => { map[q.id] = { ...q, themeTitle: q.theme || 'Мои вопросы', section: 'custom' } })
+        customQuestions.forEach(q => { map[q.id] = { ...q, themeTitle: q.theme || 'Мои вопросы', section: 'custom', isAI: true } })
         return
       }
       const level = QUESTIONS[sec]?.levels[interview.grade]
@@ -81,7 +81,7 @@ export default function Interview() {
       </div>
 
       <div className="flex flex-1">
-        <div className="hidden md:block w-48 bg-white border-r p-3 overflow-auto no-print">
+        <div className="hidden md:block w-52 bg-white border-r p-3 overflow-auto no-print">
           <div className="space-y-1">
             {qids.map((qid, i) => {
               const a = interview.answers[qid]
@@ -91,10 +91,10 @@ export default function Interview() {
                 <button key={qid} onClick={() => goTo(i)}
                   className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all ${i === idx ? 'bg-indigo-50 border border-indigo-200 text-indigo-800' : 'hover:bg-slate-50 text-slate-500'}`}>
                   <div className="flex items-center gap-1.5">
-                    <span className={`w-4 h-4 rounded-full text-center text-xs flex items-center justify-center flex-shrink-0 ${scored ? (a.score === 2 ? 'bg-green-500 text-white' : a.score === 1 ? 'bg-amber-400 text-white' : 'bg-red-400 text-white') : 'bg-slate-200'}`}>
+                    <span className={`w-5 h-5 rounded-full text-center text-xs flex items-center justify-center flex-shrink-0 font-medium ${scored ? (a.score === 2 ? 'bg-green-500 text-white' : a.score === 1 ? 'bg-amber-400 text-white' : 'bg-red-400 text-white') : 'bg-slate-200 text-slate-600'}`}>
                       {scored ? SCORE_META[a.score].short : i + 1}
                     </span>
-                    <span className="truncate flex-1">{q?.q?.slice(0, 40)}...</span>
+                    <span className="truncate flex-1">{q?.title || q?.q?.slice(0, 35)}</span>
                     {a?.flagged && <span className="flex-shrink-0 text-red-400">🚩</span>}
                   </div>
                 </button>
@@ -106,13 +106,59 @@ export default function Interview() {
         <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 py-6">
           {curQ ? (
             <>
-              <div className="text-xs text-slate-400 mb-2 uppercase tracking-wide">{curQ.themeTitle} · Вопрос {idx + 1} из {total}</div>
+              <div className="mb-3">
+                <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">{curQ.themeTitle} · Вопрос {idx + 1} из {total}</div>
+                {curQ.title && <h2 className="font-semibold text-slate-800 text-base leading-snug">{curQ.title}</h2>}
+                {(curQ.tags?.length > 0 || curQ.isAI) && (
+                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                    {curQ.isAI && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs rounded-full font-medium">✨ AI</span>}
+                    {curQ.tags?.map(tag => (
+                      <span key={tag} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full font-medium">{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="card p-5 mb-4">
-                <p className="text-base font-medium text-slate-800 leading-relaxed">{curQ.q}</p>
+                {curQ.scenario && (
+                  <div className="mb-4 p-3 bg-slate-800 text-slate-200 rounded-lg text-sm font-mono leading-relaxed whitespace-pre-wrap">
+                    {curQ.scenario}
+                  </div>
+                )}
+
+                {curQ.subQuestions?.length > 0 ? (
+                  <ol className="space-y-2.5">
+                    {curQ.subQuestions.map((sq, i) => (
+                      <li key={i} className="flex gap-2.5 text-sm">
+                        <span className="font-bold text-slate-400 flex-shrink-0 w-4">{i + 1}.</span>
+                        <span className="text-slate-800 leading-relaxed">{sq}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-base font-medium text-slate-800 leading-relaxed">{curQ.q}</p>
+                )}
 
                 {showAnswer ? (
-                  <div className="mt-4 p-3.5 bg-indigo-50 border-l-4 border-indigo-400 rounded-r-lg text-sm text-slate-700 leading-relaxed">{curQ.a}</div>
+                  <div className="mt-4 space-y-3">
+                    {curQ.trap && (
+                      <div className="p-3 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
+                        <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-1.5">🪤 Ловушка</div>
+                        <p className="text-sm text-amber-900 leading-relaxed">{curQ.trap}</p>
+                      </div>
+                    )}
+                    <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
+                      <div className="text-xs font-bold text-green-700 uppercase tracking-wide mb-1.5">✓ Хороший ответ</div>
+                      <p className="text-sm text-green-900 leading-relaxed">{curQ.a}</p>
+                    </div>
+                    {curQ.redFlag && (
+                      <div className="p-3 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
+                        <div className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1.5">🚩 Красный флаг</div>
+                        <p className="text-sm text-red-900 leading-relaxed">{curQ.redFlag}</p>
+                      </div>
+                    )}
+                    <button onClick={() => setShowAnswer(false)} className="text-xs text-slate-400 hover:text-slate-600 underline">▲ Скрыть</button>
+                  </div>
                 ) : (
                   <button onClick={() => setShowAnswer(true)} className="mt-3 text-xs text-indigo-500 hover:text-indigo-700 underline">Показать эталонный ответ</button>
                 )}
@@ -162,12 +208,11 @@ export default function Interview() {
           <div className="card p-6 w-full max-w-md">
             <h3 className="font-bold text-lg mb-2">Завершить интервью</h3>
             <p className="text-sm text-slate-500 mb-4">Отвечено {answered} из {total} вопросов. Выберите рекомендацию:</p>
-
             <div className="space-y-2 mb-4">
               {[
-                { k: 'hire',   l: 'Нанять',    cls: 'border-green-300', act: 'border-green-500 bg-green-50 text-green-800' },
-                { k: 'maybe',  l: 'Подумать',   cls: 'border-blue-200',  act: 'border-blue-500 bg-blue-50 text-blue-800'   },
-                { k: 'reject', l: 'Отказать',   cls: 'border-red-200',   act: 'border-red-500 bg-red-50 text-red-800'      },
+                { k: 'hire',   l: 'Нанять',   cls: 'border-green-300', act: 'border-green-500 bg-green-50 text-green-800' },
+                { k: 'maybe',  l: 'Подумать',  cls: 'border-blue-200',  act: 'border-blue-500 bg-blue-50 text-blue-800'   },
+                { k: 'reject', l: 'Отказать',  cls: 'border-red-200',   act: 'border-red-500 bg-red-50 text-red-800'      },
               ].map(opt => (
                 <button key={opt.k} onClick={() => setRec(opt.k)}
                   className={`w-full py-2.5 px-4 rounded-lg border-2 text-sm font-medium text-left transition-all ${rec === opt.k ? opt.act : `${opt.cls} bg-white text-slate-700`}`}>
@@ -175,14 +220,12 @@ export default function Interview() {
                 </button>
               ))}
             </div>
-
             <div className="mb-4">
               <label className="label">Общая заметка</label>
               <textarea className="input resize-none" rows={3} placeholder="Общее впечатление, сильные/слабые стороны..."
                 value={interview.generalNote || ''}
                 onChange={e => setGeneralNote(id, e.target.value)} />
             </div>
-
             <div className="flex gap-2">
               <button className="btn-ghost flex-1" onClick={() => setShowFinish(false)}>Отмена</button>
               <button className="btn-primary flex-1" disabled={!rec} onClick={handleFinish}>Завершить</button>
