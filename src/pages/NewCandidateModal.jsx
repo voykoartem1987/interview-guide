@@ -57,7 +57,7 @@ async function parseResume(file) {
 async function callClaude(apiKey, resumeText) {
   const prompt = `На основе резюме кандидата на позицию таргетолог/контекстолог сгенерируй 4-5 технических вопросов для собеседования, специфических для опыта и инструментов этого кандидата. К каждому вопросу дай эталонный ответ (2-3 предложения).\n\nРезюме:\n${resumeText.slice(0, 3000)}\n\nВерни ТОЛЬКО JSON массив, без пояснений:\n[\n  {"q": "вопрос", "a": "эталонный ответ", "theme": "тема (например: Facebook Ads, Google Ads, Аналитика, Стратегия)"},\n  ...\n]`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://delicate-firefly-bb32.voykoartem1987.workers.dev', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
