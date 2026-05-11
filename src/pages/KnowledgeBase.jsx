@@ -6,14 +6,51 @@ const SECTION_KEYS = Object.keys(QUESTIONS)
 function QuestionRow({ q }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border-b border-slate-50 last:border-0 py-3">
+    <div className="border-b border-slate-100 last:border-0 py-3">
       <button className="w-full text-left flex items-start gap-3 group" onClick={() => setOpen(o => !o)}>
-        <span className="flex-shrink-0 mt-0.5 text-slate-300 group-hover:text-indigo-400 transition-colors text-sm">{open ? '▾' : '▸'}</span>
-        <span className="text-sm text-slate-800 font-medium leading-snug">{q.q}</span>
+        <span className="flex-shrink-0 mt-1 text-slate-300 group-hover:text-indigo-400 transition-colors text-sm">{open ? '▾' : '▸'}</span>
+        <div className="flex-1 min-w-0">
+          <span className="text-sm text-slate-800 font-semibold leading-snug">{q.title || q.q}</span>
+          {q.tags?.length > 0 && (
+            <div className="flex gap-1 mt-1.5 flex-wrap">
+              {q.tags.map(tag => (
+                <span key={tag} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full">{tag}</span>
+              ))}
+            </div>
+          )}
+        </div>
       </button>
       {open && (
-        <div className="mt-2 ml-6 p-3 bg-indigo-50 border-l-4 border-indigo-300 rounded-r-lg text-sm text-slate-700 leading-relaxed">
-          {q.a}
+        <div className="mt-2 ml-6 space-y-2">
+          {q.title && (
+            <p className="text-sm text-slate-500 leading-relaxed italic">{q.q}</p>
+          )}
+          {q.subQuestions?.length > 0 && (
+            <ol className="space-y-1.5 pl-1">
+              {q.subQuestions.map((sq, i) => (
+                <li key={i} className="flex gap-2 text-sm">
+                  <span className="font-bold text-slate-400 flex-shrink-0 w-4">{i + 1}.</span>
+                  <span className="text-slate-700 leading-relaxed">{sq}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {q.trap && (
+            <div className="p-3 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
+              <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-1">🪤 Ловушка</div>
+              <p className="text-sm text-amber-900 leading-relaxed">{q.trap}</p>
+            </div>
+          )}
+          <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
+            <div className="text-xs font-bold text-green-700 uppercase tracking-wide mb-1">✓ Хороший ответ</div>
+            <p className="text-sm text-green-900 leading-relaxed">{q.a}</p>
+          </div>
+          {q.redFlag && (
+            <div className="p-3 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
+              <div className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">🚩 Красный флаг</div>
+              <p className="text-sm text-red-900 leading-relaxed">{q.redFlag}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -31,7 +68,7 @@ export default function KnowledgeBase() {
     if (!search.trim()) return level.themes
     const q = search.toLowerCase()
     return level.themes
-      .map(t => ({ ...t, questions: t.questions.filter(x => x.q.toLowerCase().includes(q) || x.a.toLowerCase().includes(q)) }))
+      .map(t => ({ ...t, questions: t.questions.filter(x => x.q.toLowerCase().includes(q) || x.a.toLowerCase().includes(q) || x.title?.toLowerCase().includes(q)) }))
       .filter(t => t.questions.length > 0)
   }, [section, grade, search])
 
