@@ -159,7 +159,7 @@ ${questionsList}
 
 Структура ответа (5 блоков):
 
-1. ТЕХНИЧЕСКИЙ УРОВЕНь
+1. ТЕХНИЧЕСКИЙ УРОВЕНЬ
 Что знает хорошо, что слабо, насколько соответствует заявленному грейду. Конкретные примеры из транскрипции.
 
 2. МЫШЛЕНИЕ И ПОДХОД
@@ -216,7 +216,7 @@ ${questionsList}
     const prompt = buildInitialPrompt()
     initialPromptRef.current = prompt
     try {
-      const raw = await callClaude([{ role: 'user', content: prompt }], key, 2500)
+      const raw = await callClaude([{ role: 'user', content: prompt }], key, 4000)
 
       let analysisText = raw
       let scoresJson = null
@@ -228,14 +228,14 @@ ${questionsList}
         return hm ? before.lastIndexOf('\n' + hm[0].trim()) : -1
       }
 
-      // Strategy 1: ===ОЦЕНКИ=== marker
-      const m1 = raw.match(/===ОЦЕНКИ===[ \t]*\r?\n([\s\S]*?\{[\s\S]*?\})/)
-      if (m1) {
-        const part = m1[1]; const js = part.indexOf('{'); const je = part.lastIndexOf('}')
-        if (js >= 0 && je > js) scoresJson = part.slice(js, je + 1)
-        let cut = raw.indexOf('===ОЦЕНКИ===')
-        cut = stripTrailingNewlines(raw, cut)
+      // Strategy 1: ===ОЦЕНКИ=== marker (always strip display text at this point)
+      const markerIdx = raw.indexOf('===ОЦЕНКИ===')
+      if (markerIdx >= 0) {
+        let cut = stripTrailingNewlines(raw, markerIdx)
         analysisText = raw.slice(0, cut)
+        const afterMarker = raw.slice(markerIdx)
+        const jsonMatch = afterMarker.match(/\{[\s\S]*\}/)
+        if (jsonMatch) scoresJson = jsonMatch[0]
       }
 
       // Strategy 2: last code block containing JSON object
