@@ -107,6 +107,13 @@ const useStore = create(
       deleteInterview: (id) =>
         set(s => ({ interviews: s.interviews.filter(i => i.id !== id) })),
 
+      reopenInterview: (id) =>
+        set(s => ({
+          interviews: s.interviews.map(i =>
+            i.id === id ? { ...i, completedAt: null, recommendation: null } : i
+          ),
+        })),
+
       saveTemplate: (name, { sections, grade, count }) => {
         const t = { id: uid(), name, sections, grade, count, createdAt: new Date().toISOString() }
         set(s => ({ templates: [t, ...s.templates] }))

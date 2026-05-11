@@ -38,7 +38,7 @@ const REC_META = {
 export default function InterviewResult() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getInterview, getCandidate, customQuestions } = useStore()
+  const { getInterview, getCandidate, customQuestions, reopenInterview } = useStore()
   const interview = getInterview(id)
   const [verdictStatus, setVerdictStatus] = useState(null)
   const [verdictText, setVerdictText] = useState('')
@@ -53,6 +53,8 @@ export default function InterviewResult() {
   const [chatLoading, setChatLoading] = useState(false)
   const transcriptionRef = useRef()
   const initialPromptRef = useRef('')
+  const [verdictEditing, setVerdictEditing] = useState(false)
+  const [verdictDraft, setVerdictDraft] = useState('')
 
   const handleTranscriptionFile = async (e) => {
     const file = e.target.files[0]
@@ -209,6 +211,12 @@ ${transcriptionText.slice(0, 12000)}
     setChatLoading(false)
   }
 
+  const handleReopenInterview = () => {
+    if (!window.confirm('Вернуть интервью в режим редактирования?\nРекомендация будет сброшена.')) return
+    reopenInterview(id)
+    navigate(`/interview/${id}`)
+  }
+
   const handleExport = () => {
     const dateStr = new Date(interview.completedAt).toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
     const scoreColor = data.overall >= 75 ? '#16a34a' : data.overall >= 50 ? '#d97706' : '#dc2626'
@@ -239,10 +247,6 @@ ${transcriptionText.slice(0, 12000)}
       ${q.note ? `<div style="font-size:12px;color:#dc2626;font-style:italic">Заметка: ${q.note}</div>` : ''}
     </div>`).join('')
 
-    const totalLabel = data.total < data.totalInInterview
-      ? `${data.total} из ${data.totalInInterview} вопросов`
-      : `${data.total} вопросов`
-
     const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчёт: ${candidate?.name}</title>
 <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:800px;margin:0 auto;padding:32px 24px;color:#1e293b}h2{font-size:15px;margin:24px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}table{width:100%;border-collapse:collapse}@media print{body{padding:0}}</style>
 </head><body>
@@ -253,7 +257,7 @@ ${transcriptionText.slice(0, 12000)}
     ${rec ? `<div style="margin-top:10px;padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;font-weight:600;font-size:13px;display:inline-block">${rec.icon} ${rec.label}</div>` : ''}
     ${interview.generalNote ? `<div style="margin-top:10px;font-size:13px;color:#475569;font-style:italic">"${interview.generalNote}"</div>` : ''}
   </div>
-  <div style="text-align:right"><div style="font-size:42px;font-weight:800;color:${scoreColor}">${data.overall}%</div><div style="font-size:11px;color:#94a3b8">${totalLabel}</div></div>
+  <div style="text-align:right"><div style="font-size:42px;font-weight:800;color:${scoreColor}">${data.overall}%</div><div style="font-size:11px;color:#94a3b8">${data.total} вопросов</div></div>
 </div>
 <h2>Результаты по разделам</h2><table>${sectionRows}</table>
 ${data.weakThemes.length ? `<h2 style="color:#b91c1c">Слабые места</h2>${data.weakThemes.map(t => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${t.title}</span><span style="color:#ef4444;font-weight:bold">${t.pct}%</span></div>`).join('')}` : ''}
@@ -276,7 +280,8 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
       <div className="flex items-center gap-3 mb-6 no-print">
         <Link to={`/candidates/${interview.candidateId}`} className="text-slate-400 hover:text-slate-600">←</Link>
         <h1 className="font-bold text-xl">Результат интервью</h1>
-        <button className="btn-ghost ml-auto" onClick={() => window.print()}>🖸 Печать</button>
+        <button className="btn-ghost text-sm" onClick={handleReopenInterview}>✏ Оценки</button>
+        <button className="btn-ghost" onClick={() => window.print()}>🖨 Печать</button>
       </div>
 
       <div className="card p-6 mb-5">
@@ -471,7 +476,29 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
           </div>
         ) : verdictStatus === 'done' ? (
           <div>
-            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-4 pb-4 border-b border-slate-100">{verdictText}</div>
+            {verdictEditing ? (
+              <div className="mb-4">
+                <textarea
+                  className="input resize-y text-sm w-full"
+                  rows={10}
+                  value={verdictDraft}
+                  onChange={e => setVerdictDraft(e.target.value)}
+                />
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => { setVerdictText(verdictDraft); setVerdictEditing(false) }} className="btn-primary text-sm">Сохранить</button>
+                  <button onClick={() => setVerdictEditing(false)} className="btn-ghost text-sm">Отмена</button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative mb-4 pb-4 border-b border-slate-100">
+                <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{verdictText}</div>
+                <button
+                  onClick={() => { setVerdictDraft(verdictText); setVerdictEditing(true) }}
+                  className="absolute top-0 right-0 text-xs text-slate-400 hover:text-slate-600 leading-none"
+                  title="Редактировать текст"
+                >✏</button>
+              </div>
+            )}
 
             {chatMessages.length > 0 && (
               <div className="space-y-3 mb-4">
