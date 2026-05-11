@@ -163,8 +163,9 @@ ${questionsList}
 Затем выставь оценку каждому вопросу на основе транскрипции.
 Оценки: 2 = ответил хорошо, 1 = частично, 0 = не знает/не ответил, null = не обсуждалось.
 
+ОБЯЗАТЕЛЬНО в самом конце добавь РОВНО в таком формате (без отступов, без markdown, без code block):
 ===ОЦЕНКИ===
-{"question_id": score_or_null}
+{"question_id": score_or_null, "question_id2": score_or_null}
 
 В процессе чата, если исправляешь анализ по замечаниям пользователя, выводи полный обновлённый текст анализа (только пункты 1-3, без оценок) в теге:
 [ОБНОВЛЁННЫЙ_АНАЛИЗ]
@@ -204,29 +205,53 @@ ${questionsList}
       const raw = await callClaude([{ role: 'user', content: prompt }], key, 2000)
 
       let analysisText = raw
-      let scoredCount = 0
       let scoresJson = null
-      let cutIndex = -1
+      let scoredCount = 0
 
-      // Format 1: ===ОЦЕНКИ===
-      const m1 = raw.match(/===ОЦЕНКИ===\s*\n(\{[\s\S]*?\})/)
-      if (m1) {
-        scoresJson = m1[1]
-        cutIndex = raw.indexOf('===ОЦЕНКИ===')
-        while (cutIndex > 0 && raw[cutIndex - 1] === '\n') cutIndex--
+      const stripTrailingNewlines = (s, idx) => { while (idx > 0 && (s[idx - 1] === '\n' || s[idx - 1] === '\r')) idx--; return idx }
+      const cutBeforeHeading = (before) => {
+        const hm = before.match(/\n#{1,6}[ \t][^\n]*\n*$/)
+        return hm ? before.lastIndexOf('\n' + hm[0].trim()) : -1
       }
 
-      // Format 2: ```json code block (last occurrence)
+      // Strategy 1: ===ОЦЕНКИ=== marker
+      const m1 = raw.match(/===ОЦЕНКИ===[ \t]*\r?\n([\s\S]*?\{[\s\S]*?\})/)
+      if (m1) {
+        const part = m1[1]; const js = part.indexOf('{'); const je = part.lastIndexOf('}')
+        if (js >= 0 && je > js) scoresJson = part.slice(js, je + 1)
+        let cut = raw.indexOf('===ОЦЕНКИ===')
+        cut = stripTrailingNewlines(raw, cut)
+        analysisText = raw.slice(0, cut)
+      }
+
+      // Strategy 2: last code block containing JSON object
       if (!scoresJson) {
-        const re = /```(?:json)?\s*\n(\{[\s\S]*?\})\s*\n?```/g
-        let lastM = null, m
-        while ((m = re.exec(raw)) !== null) lastM = m
-        if (lastM) {
-          scoresJson = lastM[1]
-          const before = raw.slice(0, lastM.index)
-          const hi = before.search(/\n#{1,3} [^\n]+\n*$/)
-          cutIndex = hi >= 0 ? hi : lastM.index
-          while (cutIndex > 0 && raw[cutIndex - 1] === '\n') cutIndex--
+        const re = /```(?:json)?[ \t]*\r?\n([\s\S]*?)```/g
+        let lastBlock = null; let m
+        while ((m = re.exec(raw)) !== null) {
+          const c = m[1].trim()
+          if (c.startsWith('{')) lastBlock = { index: m.index, length: m[0].length, content: c }
+        }
+        if (lastBlock) {
+          scoresJson = lastBlock.content
+          const before = raw.slice(0, lastBlock.index)
+          const hi = cutBeforeHeading(before)
+          let cut = hi >= 0 ? hi : lastBlock.index
+          cut = stripTrailingNewlines(raw, cut)
+          analysisText = raw.slice(0, cut)
+        }
+      }
+
+      // Strategy 3: bare JSON object with question ID keys (no code fences)
+      if (!scoresJson) {
+        const m3 = raw.match(/\{[\s\S]*?"(?:meta|g|cq)[_a-z0-9]+"[ \t]*:[ \t]*(?:\d+|null)[\s\S]*?\}/)
+        if (m3) {
+          scoresJson = m3[0]
+          const before = raw.slice(0, raw.indexOf(m3[0]))
+          const hi = cutBeforeHeading(before)
+          let cut = hi >= 0 ? hi : raw.indexOf(m3[0])
+          cut = stripTrailingNewlines(raw, cut)
+          analysisText = raw.slice(0, cut)
         }
       }
 
@@ -242,11 +267,10 @@ ${questionsList}
             }
           })
           setAutoScoredCount(scoredCount)
-          if (cutIndex >= 0) analysisText = raw.slice(0, cutIndex).trim()
         } catch (_) {}
       }
 
-      setVerdictText(analysisText)
+      setVerdictText(analysisText.trim())
       setVerdictStatus('done')
     } catch (err) {
       setVerdictError(err.message)
