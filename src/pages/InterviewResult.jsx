@@ -84,6 +84,7 @@ export default function InterviewResult() {
 
     const answered = Object.entries(interview.answers).filter(([, a]) => a.score !== null)
     const total = answered.length
+    const totalInInterview = interview.questionIds.length
     const overall = total ? Math.round((answered.reduce((s, [, a]) => s + a.score, 0) / (total * 2)) * 100) : 0
 
     const bySection = {}
@@ -123,7 +124,7 @@ export default function InterviewResult() {
       .filter(([, a]) => a.flagged)
       .map(([qid, a]) => ({ ...questionMap[qid], note: a.note, score: a.score }))
 
-    return { questionMap, overall, bySection, byTheme, weakThemes, strongThemes, flagged, total }
+    return { questionMap, overall, bySection, byTheme, weakThemes, strongThemes, flagged, total, totalInInterview }
   }, [interview, customQuestions])
 
   if (!interview || !data) return <div className="p-8 text-slate-400">Не найдено. <Link to="/" className="underline">На главную</Link></div>
@@ -148,8 +149,37 @@ export default function InterviewResult() {
       .join('\n\n')
 
     const prompt = transcriptionText
-      ? `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОЦЕНКИ ИНТЕРВЬЮЕРА:\n${qaPairs}\n\nТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:\n${transcriptionText.slice(0, 8000)}\n\nДай структурированный анализ на русском языке, опираясь на ОБА источника (оценки и транскрипцию):\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
-      : `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОтветы:\n${qaPairs}\n\nДай структурированный анализ на русском языке:\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)\n\nОпирайся только на реальные оценки и заметки.`
+      ? `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.
+
+Кандидат: ${candidate?.name}
+Грейд: ${LEVEL_LABELS[interview.grade]}
+Общий результат: ${data.overall}%
+
+ОЦЕНКИ ИНТЕРВЬЮЕРА:
+${qaPairs}
+
+ТРАНСКРИПЦИЯ СОБЕСЕДОВАНИЯ:
+${transcriptionText.slice(0, 8000)}
+
+Дай структурированный анализ на русском языке, опираясь на ОБА источника (оценки и транскрипцию):
+1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)
+2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)
+3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)`
+      : `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.
+
+Кандидат: ${candidate?.name}
+Грейд: ${LEVEL_LABELS[interview.grade]}
+Общий результат: ${data.overall}%
+
+Ответы:
+${qaPairs}
+
+Дай структурированный анализ на русском языке:
+1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)
+2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)
+3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)
+
+Опирайся только на реальные оценки и заметки.`
 
     try {
       const res = await fetch(CF_WORKER, {
@@ -209,6 +239,10 @@ export default function InterviewResult() {
       ${q.note ? `<div style="font-size:12px;color:#dc2626;font-style:italic">Заметка: ${q.note}</div>` : ''}
     </div>`).join('')
 
+    const totalLabel = data.total < data.totalInInterview
+      ? `${data.total} из ${data.totalInInterview} вопросов`
+      : `${data.total} вопросов`
+
     const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчёт: ${candidate?.name}</title>
 <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:800px;margin:0 auto;padding:32px 24px;color:#1e293b}h2{font-size:15px;margin:24px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}table{width:100%;border-collapse:collapse}@media print{body{padding:0}}</style>
 </head><body>
@@ -219,7 +253,7 @@ export default function InterviewResult() {
     ${rec ? `<div style="margin-top:10px;padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;font-weight:600;font-size:13px;display:inline-block">${rec.icon} ${rec.label}</div>` : ''}
     ${interview.generalNote ? `<div style="margin-top:10px;font-size:13px;color:#475569;font-style:italic">"${interview.generalNote}"</div>` : ''}
   </div>
-  <div style="text-align:right"><div style="font-size:42px;font-weight:800;color:${scoreColor}">${data.overall}%</div><div style="font-size:11px;color:#94a3b8">${data.total} вопросов</div></div>
+  <div style="text-align:right"><div style="font-size:42px;font-weight:800;color:${scoreColor}">${data.overall}%</div><div style="font-size:11px;color:#94a3b8">${totalLabel}</div></div>
 </div>
 <h2>Результаты по разделам</h2><table>${sectionRows}</table>
 ${data.weakThemes.length ? `<h2 style="color:#b91c1c">Слабые места</h2>${data.weakThemes.map(t => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${t.title}</span><span style="color:#ef4444;font-weight:bold">${t.pct}%</span></div>`).join('')}` : ''}
@@ -242,7 +276,7 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
       <div className="flex items-center gap-3 mb-6 no-print">
         <Link to={`/candidates/${interview.candidateId}`} className="text-slate-400 hover:text-slate-600">←</Link>
         <h1 className="font-bold text-xl">Результат интервью</h1>
-        <button className="btn-ghost ml-auto" onClick={() => window.print()}>🖨 Печать</button>
+        <button className="btn-ghost ml-auto" onClick={() => window.print()}>🖸 Печать</button>
       </div>
 
       <div className="card p-6 mb-5">
@@ -253,7 +287,11 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
           </div>
           <div className="text-right">
             <div className={`text-4xl font-bold ${data.overall >= 75 ? 'text-green-600' : data.overall >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{data.overall}%</div>
-            <div className="text-xs text-slate-400">{data.total} вопросов</div>
+            <div className="text-xs text-slate-400">
+              {data.total < data.totalInInterview
+                ? `${data.total} из ${data.totalInInterview} вопросов`
+                : `${data.total} вопросов`}
+            </div>
           </div>
         </div>
         {rec && (
