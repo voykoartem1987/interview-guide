@@ -164,7 +164,12 @@ ${questionsList}
 Оценки: 2 = ответил хорошо, 1 = частично, 0 = не знает/не ответил, null = не обсуждалось.
 
 ===ОЦЕНКИ===
-{"question_id": score_or_null}`
+{"question_id": score_or_null}
+
+В процессе чата, если исправляешь анализ по замечаниям пользователя, выводи полный обновлённый текст анализа (только пункты 1-3, без оценок) в теге:
+[ОБНОВЛЁННЫЙ_АНАЛИЗ]
+...
+[/ОБНОВЛЁННЫЙ_АНАЛИЗ]`
   }
 
   const callClaude = async (messages, key, maxTokens = 1000) => {
@@ -264,8 +269,14 @@ ${questionsList}
         { role: 'assistant', content: verdictText },
         ...newMessages,
       ]
-      const reply = await callClaude(history, key)
-      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      const reply = await callClaude(history, key, 1500)
+      let displayReply = reply
+      const updMatch = reply.match(/\[ОБНОВЛЁННЫЙ_АНАЛИЗ\]([\s\S]*?)\[\/ОБНОВЛЁННЫЙ_АНАЛИЗ\]/)
+      if (updMatch) {
+        setVerdictText(updMatch[1].trim())
+        displayReply = reply.replace(/\n*\[ОБНОВЛЁННЫЙ_АНАЛИЗ\][\s\S]*?\[\/ОБНОВЛЁННЫЙ_АНАЛИЗ\]\n*/, '').trim() || 'Анализ обновлён ✓'
+      }
+      setChatMessages(prev => [...prev, { role: 'assistant', content: displayReply }])
     } catch (err) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: `Ошибка: ${err.message}` }])
     }
@@ -325,6 +336,8 @@ ${data.weakThemes.length ? `<h2 style="color:#b91c1c">Слабые места</h
 ${data.strongThemes.length ? `<h2 style="color:#15803d">Сильные стороны</h2>${data.strongThemes.map(t => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${t.title}</span><span style="color:#22c55e;font-weight:bold">${t.pct}%</span></div>`).join('')}` : ''}
 ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2>${flaggedHtml}` : ''}
 <h2>Все ответы</h2>${answersHtml}
+${verdictText ? `<h2>Анализ Claude AI</h2><div style="font-size:13px;color:#334155;line-height:1.6;white-space:pre-wrap">${verdictText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}
+<script>window.addEventListener('load',function(){window.print()})<\/script>
 </body></html>`
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -614,7 +627,7 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
 
       <div className="flex gap-3 no-print">
         <Link to={`/candidates/${interview.candidateId}`} className="btn-ghost flex-1 text-center">← К кандидату</Link>
-        <button className="btn-ghost flex-1" onClick={handleExport}>⬇ Скачать отчёт</button>
+        <button className="btn-ghost flex-1" onClick={handleExport}>⬇ Скачать PDF</button>
       </div>
     </div>
   )
