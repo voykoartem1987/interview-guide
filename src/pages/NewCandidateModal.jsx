@@ -99,6 +99,7 @@ export default function NewCandidateModal({ onClose }) {
   const [aiStatus, setAiStatus] = useState(null)
   const [aiError, setAiError] = useState('')
   const [aiCount, setAiCount] = useState(0)
+  const [pendingQuestions, setPendingQuestions] = useState([])
   const fileRef = useRef()
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -143,13 +144,20 @@ export default function NewCandidateModal({ onClose }) {
     setAiError('')
     try {
       const questions = await callClaude(apiKey, resumeText)
-      questions.forEach(q => addCustomQuestion({ q: q.q, a: q.a, theme: q.theme || 'AI вопросы' }))
-      setAiCount(questions.length)
-      setAiStatus('done')
+      setPendingQuestions(questions.map(q => ({ ...q, excluded: false })))
+      setAiStatus('preview')
     } catch (err) {
       setAiError(err.message)
       setAiStatus('error')
     }
+  }
+
+  const handleAddQuestions = () => {
+    const toAdd = pendingQuestions.filter(q => !q.excluded)
+    toAdd.forEach(q => addCustomQuestion({ q: q.q, a: q.a, theme: q.theme || 'AI вопросы' }))
+    setAiCount(toAdd.length)
+    setAiStatus('done')
+    setPendingQuestions([])
   }
 
   const submit = (e) => {
@@ -219,6 +227,33 @@ export default function NewCandidateModal({ onClose }) {
               </span>
             ) : aiStatus === 'done' ? (
               <span className="text-green-700 text-sm font-medium">✓ {aiCount} вопросов добавлено в "Мои вопросы"</span>
+            ) : aiStatus === 'preview' ? (
+              <div className="space-y-2">
+                <p className="text-xs text-violet-700 font-medium">Выбери вопросы для добавления:</p>
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {pendingQuestions.map((q, i) => (
+                    <div key={i} className={`flex gap-2 p-2.5 rounded-lg border text-xs transition-all ${q.excluded ? 'opacity-40 bg-slate-50 border-slate-100' : 'bg-white border-violet-100'}`}>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-violet-600 font-medium">{q.theme} · </span>
+                        <span className="text-slate-700">{q.q}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPendingQuestions(prev => prev.map((x, j) => j === i ? { ...x, excluded: !x.excluded } : x))}
+                        className={`flex-shrink-0 w-5 h-5 rounded-full text-xs flex items-center justify-center transition-all ${q.excluded ? 'bg-slate-200 text-slate-400 hover:bg-slate-300' : 'bg-red-100 text-red-500 hover:bg-red-200'}`}
+                      >{q.excluded ? '+' : '×'}</button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddQuestions}
+                  disabled={pendingQuestions.every(q => q.excluded)}
+                  className="btn-primary w-full text-sm disabled:opacity-40"
+                >
+                  Добавить {pendingQuestions.filter(q => !q.excluded).length} вопросов
+                </button>
+              </div>
             ) : (
               <div className="space-y-1.5">
                 {aiStatus === 'error' && (

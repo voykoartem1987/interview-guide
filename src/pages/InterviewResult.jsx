@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import useStore, { SCORE_META } from '../store/useStore'
 import { QUESTIONS, LEVEL_LABELS } from '../data/questions'
+
+const CF_WORKER = 'https://delicate-firefly-bb32.voykoartem1987.workers.dev'
 
 function ScoreBar({ pct, color }) {
   const bg = pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
@@ -26,6 +28,11 @@ export default function InterviewResult() {
   const navigate = useNavigate()
   const { getInterview, getCandidate, customQuestions } = useStore()
   const interview = getInterview(id)
+  const [verdictStatus, setVerdictStatus] = useState(null)
+  const [verdictText, setVerdictText] = useState('')
+  const [verdictError, setVerdictError] = useState('')
+  const [showKeyInput, setShowKeyInput] = useState(false)
+  const [keyInput, setKeyInput] = useState('')
 
   const data = useMemo(() => {
     if (!interview) return null
@@ -91,6 +98,53 @@ export default function InterviewResult() {
   if (!interview || !data) return <div className="p-8 text-slate-400">Не найдено. <Link to="/" className="underline">На главную</Link></div>
   const candidate = getCandidate(interview.candidateId)
   const rec = interview.recommendation ? REC_META[interview.recommendation] : null
+
+  const handleGetVerdict = async () => {
+    const key = localStorage.getItem('anthropic_api_key')
+    if (!key) { setShowKeyInput(true); return }
+    setVerdictStatus('loading')
+    setVerdictError('')
+
+    const qaPairs = interview.questionIds
+      .map(qid => {
+        const q = data.questionMap[qid]
+        const ans = interview.answers[qid]
+        if (!q || !ans || ans.score === null) return null
+        const scoreLabel = ans.score === 2 ? 'Знает отлично' : ans.score === 1 ? 'Знает частично' : 'Не знает'
+        return `Тема: ${q.themeTitle}\nВопрос: ${q.q}\nОценка: ${scoreLabel}${ans.note ? `\nЗаметка: ${ans.note}` : ''}${ans.flagged ? '\n[КРАСНЫЙ ФЛАГ]' : ''}`
+      })
+      .filter(Boolean)
+      .join('\n\n')
+
+    const prompt = `Ты анализируешь результаты собеседования на позицию таргетолог/контекстолог.\n\nКандидат: ${candidate?.name}\nГрейд: ${LEVEL_LABELS[interview.grade]}\nОбщий результат: ${data.overall}%\n\nОтветы:\n${qaPairs}\n\nДай структурированный анализ на русском языке:\n1. СИЛЬНЫЕ СТОРОНЫ (2-4 конкретных пункта)\n2. СЛАБЫЕ СТОРОНЫ (2-4 конкретных пункта)\n3. ВЕРДИКТ (1-2 предложения — стоит ли нанимать и почему)\n\nОпирайся только на реальные оценки и заметки.`
+
+    try {
+      const res = await fetch(CF_WORKER, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error?.message || `HTTP ${res.status}`)
+      }
+      const result = await res.json()
+      setVerdictText(result.content?.[0]?.text || '')
+      setVerdictStatus('done')
+    } catch (err) {
+      setVerdictError(err.message)
+      setVerdictStatus('error')
+    }
+  }
 
   const handleExport = () => {
     const dateStr = new Date(interview.completedAt).toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -267,6 +321,69 @@ ${data.flagged.length ? `<h2 style="color:#c2410c">Красные флаги</h2
             )
           })}
         </div>
+      </div>
+
+      <div className="card p-5 mb-5 border-violet-100 no-print">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="font-semibold text-slate-800">✨ Анализ от Claude AI</span>
+          <span className="text-xs text-slate-400">- персональный вердикт по ответам</span>
+        </div>
+
+        {showKeyInput ? (
+          <div className="space-y-2">
+            <input
+              className="input text-sm"
+              placeholder="sk-ant-api03-..."
+              value={keyInput}
+              onChange={e => setKeyInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && keyInput.trim()) {
+                  localStorage.setItem('anthropic_api_key', keyInput.trim())
+                  setShowKeyInput(false)
+                  setKeyInput('')
+                  handleGetVerdict()
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!keyInput.trim()) return
+                  localStorage.setItem('anthropic_api_key', keyInput.trim())
+                  setShowKeyInput(false)
+                  setKeyInput('')
+                  handleGetVerdict()
+                }}
+                disabled={!keyInput.trim()}
+                className="btn-primary text-sm flex-1 disabled:opacity-40"
+              >Сохранить и проанализировать</button>
+              <button onClick={() => setShowKeyInput(false)} className="btn-ghost text-sm">Отмена</button>
+            </div>
+            <p className="text-xs text-slate-400">Ключ хранится только в localStorage браузера</p>
+          </div>
+        ) : verdictStatus === 'loading' ? (
+          <div className="flex items-center gap-2 text-violet-700 text-sm">
+            <span className="inline-block animate-spin">↻</span> Анализирую ответы кандидата...
+          </div>
+        ) : verdictStatus === 'done' ? (
+          <div className="space-y-3">
+            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{verdictText}</div>
+            <button onClick={handleGetVerdict} className="text-xs text-slate-400 hover:text-slate-600 underline">Обновить анализ</button>
+          </div>
+        ) : verdictStatus === 'error' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-red-500">{verdictError || 'Ошибка — проверь API ключ'}</p>
+            <div className="flex gap-2">
+              <button onClick={handleGetVerdict} className="btn-ghost text-sm">Повторить</button>
+              <button onClick={() => setShowKeyInput(true)} className="text-xs text-slate-400 hover:text-slate-600 underline self-center">сменить ключ</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={handleGetVerdict} className="btn-primary text-sm">
+            Получить анализ от Claude
+          </button>
+        )}
       </div>
 
       <div className="flex gap-3 no-print">

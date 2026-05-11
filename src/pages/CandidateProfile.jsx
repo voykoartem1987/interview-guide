@@ -161,6 +161,34 @@ export default function CandidateProfile() {
               <label className="label">Количество вопросов (0 = все)</label>
               <input type="number" min={0} className="input" value={setup.count} onChange={e => setSetup(s => ({ ...s, count: parseInt(e.target.value) || 0 }))} placeholder="0 — все вопросы" />
             </div>
+            {setup.sections.length > 0 && (() => {
+              const allQs = setup.sections.flatMap(sec => {
+                if (sec === 'custom') return customQuestions.map(q => ({ ...q, themeTitle: q.theme || 'Мои вопросы' }))
+                const level = QUESTIONS[sec]?.levels[setup.grade]
+                if (!level) return []
+                return level.themes.flatMap(t => t.questions.map(q => ({ ...q, themeTitle: t.title })))
+              })
+              const total = allQs.length
+              const shown = setup.count > 0 && setup.count < total ? setup.count : total
+              return (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="text-xs text-slate-500 mb-2 font-medium">
+                    {shown === total ? `${total} вопросов` : `${shown} из ${total} (случайная выборка)`}
+                  </div>
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                    {allQs.map((q, i) => (
+                      <div key={q.id} className="flex gap-2 text-xs">
+                        <span className="text-slate-300 flex-shrink-0 w-4 text-right">{i + 1}</span>
+                        <div className="min-w-0">
+                          <span className="text-slate-400">{q.themeTitle} · </span>
+                          <span className="text-slate-600">{q.title || q.q?.slice(0, 70) || ''}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             <div className="flex gap-2">
               <input
                 className="input flex-1 text-sm"
@@ -210,7 +238,7 @@ export default function CandidateProfile() {
                   {score !== null && <span className={`text-2xl font-bold ${score >= 75 ? 'text-green-600' : score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{score}%</span>}
                   <Link to={interview.completedAt ? `/interview/${interview.id}/result` : `/interview/${interview.id}`}
                     className="btn-primary text-xs">
-                    {interview.completedAt ? 'Резумьтат' : 'Продолжить'}
+                    {interview.completedAt ? 'Результат' : 'Продолжить'}
                   </Link>
                 </div>
               </div>
